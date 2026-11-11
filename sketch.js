@@ -45,7 +45,7 @@ async function setup() {
   // create a markov model with n-gram order
   markov = RiTa.markov(ORDER);
   // pre-load the input texts from files
-  let corpus = await loadStrings('songtexts.txt');
+  let corpus = await loadStrings('spinvis.txt');
   corpus = corpus.join(' ');
   // load text into the model
   

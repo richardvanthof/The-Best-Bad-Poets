@@ -19,20 +19,9 @@ async function setup() {
   markov = RiTa.markov(ORDER);
   // pre-load the input texts from files
   let corpus = await loadStrings('spinvis.txt');
-  // corpus = corpus = corpus
-  //     .join(' ')
-  //     .replace(/\n/g, ' ')
-  //     .replace(/[^\p{L}\p{N}\s.!?]/gu, '')
-  //     .toLowerCase()
-  //     .trim();
-      
- corpus = corpus
-  .join('')
-  .replace(/[^\p{L}\p{N}\s.!?]/gu, '')
-  .toLowerCase()
-  .trim();
-
-  console.log(corpus);
+  corpus = corpus.join(' ');
+  // load text into the model
+  
   markov.addText(corpus);
   // update the display
   drawGeneratedText();

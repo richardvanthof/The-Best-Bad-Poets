@@ -3,7 +3,7 @@ let kafkaText, wittgensteinText;
 let markov;
 
 // n-gram order
-const ORDER = 3;
+const ORDER = 2;
 // number of sentences
 const NUM_SENTENCES = 15;
 
@@ -18,14 +18,21 @@ async function setup() {
   // create a markov model with n-gram order
   markov = RiTa.markov(ORDER);
   // pre-load the input texts from files
-  let corpus = await loadStrings('songtexts.txt');
-  corpus = corpus = corpus
-      .join(' ')
-      .replace(/\n/g, ' ')
-      .replace(/[^\p{L}\p{N}\s.!?]/gu, '')
-      .toLowerCase()
-      .trim();
+  let corpus = await loadStrings('spinvis.txt');
+  // corpus = corpus = corpus
+  //     .join(' ')
+  //     .replace(/\n/g, ' ')
+  //     .replace(/[^\p{L}\p{N}\s.!?]/gu, '')
+  //     .toLowerCase()
+  //     .trim();
+      
+ corpus = corpus
+  .join('')
+  .replace(/[^\p{L}\p{N}\s.!?]/gu, '')
+  .toLowerCase()
+  .trim();
 
+  console.log(corpus);
   markov.addText(corpus);
   // update the display
   drawGeneratedText();
@@ -36,7 +43,7 @@ function drawGeneratedText() {
   // generate new text, returns an array of sentences
   let sentences = markov.generate({ numSentences: NUM_SENTENCES });
   let result = sentences.join('\n\n');
-  console.log(result);
+  //console.log(result);
   // display generated sentences
   fill(40, 250);
   textAlign(LEFT);

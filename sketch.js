@@ -18,10 +18,9 @@ async function setup() {
   // create a markov model with n-gram order
   markov = RiTa.markov(ORDER);
   // pre-load the input texts from files
-  let corpus = await loadStrings('spinvis.txt');
-  corpus = corpus.join(' ');
+  let corpus = await loadStrings('songs/Bjork - Venus as a boy.txt');
+  corpus = corpus.join('. ');
   // load text into the model
-  
   markov.addText(corpus);
   // update the display
   drawGeneratedText();
@@ -30,9 +29,12 @@ async function setup() {
 function drawGeneratedText() {
   background(250, 250, 245);
   // generate new text, returns an array of sentences
-  let sentences = markov.generate({ numSentences: NUM_SENTENCES });
-  let result = sentences.join('\n\n');
-  //console.log(result);
+ let sentences = [];
+for (let i = 0; i < NUM_SENTENCES; i++) {
+  sentences.push(markov.generate());
+}
+let result = sentences.join('\n\n');
+  
   // display generated sentences
   fill(40, 250);
   textAlign(LEFT);

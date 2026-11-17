@@ -25,18 +25,28 @@ Spinvis - Voor ik vergeet.txt
 Spinvis - Wespen op de Appeltaart.txt
   `.trim().split('\n').map(file => file.trim()).filter(Boolean);
 
-const ORDER = 1;
+let ORDER = 2;
 
 const generateBtn = document.getElementById('generate-btn');
 const corpusTextArea = document.getElementById('corpus');
 const outputTextarea = document.getElementById('output');
 const promptInput = document.getElementById('prompt');
-
+const markovOrderValuePreview = document.getElementById('markov-order-value');
+const markovOrderSelector = document.getElementById('markov-order-selector');
 
 let markov = RiTa.markov();
 
 const initialize = async () => {
   await loadTexts(files);
+  
+  markovOrderSelector.value = ORDER;
+  markovOrderValuePreview.textContent = ORDER;
+
+  markovOrderSelector.addEventListener('change', (e) => {
+    markovOrderValuePreview.textContent = markovOrderSelector.value;
+    ORDER = parseInt(markovOrderSelector.value, 10);
+  })
+
   generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
     try {
@@ -88,8 +98,8 @@ const showError = (err) => {
 const generateText = async () => {
   const options = {
     numSentences: 5,
-    minLength: 5,
-    maxLength: 30,
+    // minLength: 5,
+    // maxLength: 30
     // temperature: 0.9,
     // maxLengthMatch: 7,
     // debug: false,
@@ -99,7 +109,7 @@ const generateText = async () => {
   // Get the raw input string
   const promptText = promptInput.value.trim().split(/\s+/) || [''];
   
-  return await markov.generate(2, promptText);
+  return await markov.generate(ORDER, promptText, options);
 }
 initialize();
 

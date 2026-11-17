@@ -4,7 +4,25 @@
     <script src="https://cdn.jsdelivr.net/npm/rita"></script>
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8">
+    <style>
+      * {
+        box-sizing: border-box;
+        display: block;
+      }
+    </style>
   </head>
   <body>
+    
+    <div>
+      <label for="corpus">Text corpus </label>
+    </div>
+      <textarea id="corpus" rows="10" cols="50"></textarea>
+   <div>
+    <label for="output">Output text</label>
+    <button id="generate-btn">Generate text</button>
+   </div>
+    
+      <textarea id="output" rows="10" cols="50"></textarea>
+    
     <script src="sketch.js"></script>
 </body></html>

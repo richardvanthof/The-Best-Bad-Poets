@@ -103,7 +103,7 @@ const generateText = async () => {
     //minLength: 5,
    // maxLength: 10, //is total output length, so 30 can be too short for 5 sentences.
     // An impossible combination makes RiTa keep searching for a valid result.
-    // maxLength: 150
+    maxLength: 150
     // temperature: 0.9,
     // maxLengthMatch: 7,
     //maxAttempts: 100

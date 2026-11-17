@@ -26,7 +26,11 @@ Spinvis - Wespen op de Appeltaart.txt
 `.trim().split('\n').map(file => file.trim()).filter(Boolean);
 
 let ORDER = 3;
-let LOOSENESS = 0.75; // 0.0 = tight/literal theme | 0.5 = poetic leap | 1.0 = surreal/distant
+let LOOSENESS = 0.75;             // 0.0 = tight/literal theme | 0.5 = poetic leap | 1.0 = surreal/distant
+const LOOSENESS_LINE_LIMIT = 15;  // Apply prompt looseness only to the first 15 verses (indices 0..14)
+const MAX_LINE_SIMILARITY = 0.45; // Hard semantic ceiling between ANY two lines in the poem (lower = stricter)
+const MAX_WORD_OVERLAP = 0.35;    // Max allowed ratio of shared content words between any two lines
+
 let corpus = '';
 let extractor = null;
 
@@ -157,55 +161,99 @@ const cosineSimilarity = (vecA, vecB) => {
   return dot;
 };
 
+// Common Dutch & English function words ignored when checking content-word overlap
+const STOPWORDS = new Set([
+  'de', 'het', 'een', 'en', 'van', 'ik', 'je', 'jij', 'hij', 'zij', 'ze', 'wij', 'we',
+  'in', 'op', 'te', 'dat', 'die', 'is', 'zijn', 'was', 'niet', 'maar', 'met', 'voor',
+  'aan', 'om', 'ook', 'als', 'dan', 'nog', 'wel', 'naar', 'uit', 'bij', 'tot', 'er',
+  'the', 'a', 'an', 'and', 'of', 'to', 'in', 'is', 'it', 'that', 'for', 'on', 'with',
+  'as', 'at', 'by', 'be', 'this', 'are', 'or', 'from', 'but', 'not', 'my', 'your',
+  'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'so', 'all'
+]);
+
+const extractLexicalFeatures = (text) => {
+  const allWords = text
+    .toLowerCase()
+    .replace(/[^a-zà-ÿ0-9\s'-]/g, '')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const filtered = allWords.filter(w => !STOPWORDS.has(w) && w.length > 2);
+  const contentWords = new Set(filtered.length > 0 ? filtered : allWords);
+
+  // Build 3-word consecutive phrases to catch Markov structural clones
+  const trigrams = new Set();
+  for (let i = 0; i <= allWords.length - 3; i++) {
+    trigrams.add(`${allWords[i]} ${allWords[i + 1]} ${allWords[i + 2]}`);
+  }
+
+  return { contentWords, trigrams };
+};
+
+// Returns true if candidate shares a 3-word phrase or too many content words with any chosen line
+const isLexicallyTooSimilar = (candidateFeatures, chosenFeaturesList) => {
+  for (const prev of chosenFeaturesList) {
+    // 1. Block any repeated 3-word sequence (e.g., "i wanna be", "ik wil alleen")
+    for (const trigram of candidateFeatures.trigrams) {
+      if (prev.trigrams.has(trigram)) return true;
+    }
+
+    // 2. Check overlap coefficient of meaningful words
+    let shared = 0;
+    for (const word of candidateFeatures.contentWords) {
+      if (prev.contentWords.has(word)) shared++;
+    }
+
+    const minSize = Math.min(candidateFeatures.contentWords.size, prev.contentWords.size);
+    if (minSize > 0 && shared / minSize > MAX_WORD_OVERLAP) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /**
- * FITNESS FUNCTION: Checks whether a candidate line is conceptually "loose enough"
- * without becoming completely disconnected noise.
- *
- * @param {number[]} candidateVec - Embedding of the candidate line
- * @param {number[]|null} promptVec - Embedding of the user's prompt (if provided)
- * @param {number[][]} chosenVecs - Embeddings of lines already placed in the poem
- * @param {number} looseness - 0.0 (tight) to 1.0 (very loose)
- * @returns {{ passed: boolean, fitness: number, referenceSim: number }}
+ * FITNESS FUNCTION: Enforces conceptual looseness from the prompt (when activePromptVec is passed)
+ * AND prevents any two lines in the output from sharing similar meanings.
  */
-const evaluateFitness = (candidateVec, promptVec, chosenVecs, looseness) => {
-  // Map looseness [0..1] to cosine similarity targets for MiniLM embeddings:
-  // looseness 0.0 -> targetSim 0.65, maxAllowedSim 0.80
-  // looseness 0.65 -> targetSim 0.32, maxAllowedSim 0.51
-  // looseness 1.0 -> targetSim 0.15, maxAllowedSim 0.35
+const evaluateFitness = (candidateVec, activePromptVec, chosenVecs, looseness) => {
   const targetSim = 0.65 - looseness * 0.50;
-  const maxAllowedSim = 1 - looseness * 0.45;
-  const tolerance = 0.14; // Width of the acceptable associative sweet spot
+  const maxPromptSim = 1 - looseness * 0.45;
+  const tolerance = 0.14;
 
-  // 1. Measure similarity to the active conceptual anchor (prompt, or previous line if no prompt)
-  const anchorVec = promptVec || (chosenVecs.length > 0 ? chosenVecs[chosenVecs.length - 1] : null);
-  const anchorSim = anchorVec ? cosineSimilarity(candidateVec, anchorVec) : targetSim;
+  // 1. Similarity to the user's prompt (only evaluated while looseness is active)
+  const promptSim = activePromptVec ? cosineSimilarity(candidateVec, activePromptVec) : null;
 
-  // 2. Measure highest similarity to ANY line already chosen in the poem (prevents conceptual echoes)
+  // 2. Highest semantic similarity to ANY line already selected in the poem
   let maxPoemSim = 0;
   for (const prevVec of chosenVecs) {
     const sim = cosineSimilarity(candidateVec, prevVec);
     if (sim > maxPoemSim) maxPoemSim = sim;
   }
 
-  // HARD GATE: Reject if too close to the prompt OR too close to an already-chosen verse
-  const isLooseEnough = anchorSim <= maxAllowedSim && maxPoemSim <= maxAllowedSim;
+  // HARD GATE: Must pass prompt looseness (if active) AND be strictly distinct from earlier lines
+  const passedPromptGate = !activePromptVec || promptSim <= maxPromptSim;
+  const passedUniquenessGate = maxPoemSim <= MAX_LINE_SIMILARITY;
+  const isUniqueAndLoose = passedPromptGate && passedUniquenessGate;
 
-  // BELL-CURVE SCORE: Peaks at 1.0 when anchorSim equals targetSim
-  const bellScore = Math.exp(-Math.pow(anchorSim - targetSim, 2) / (2 * tolerance * tolerance));
+  // Bell curve around targetSim when looseness is active; otherwise score purely on inter-line novelty
+  const bellScore = activePromptVec
+    ? Math.exp(-Math.pow(promptSim - targetSim, 2) / (2 * tolerance * tolerance))
+    : 1 - Math.max(0, maxPoemSim);
 
-  // NOVELTY SCORE: Rewards staying conceptually distinct from earlier lines
   const noveltyScore = 1 - Math.max(0, maxPoemSim);
-
-  const fitness = bellScore * 0.75 + noveltyScore * 0.25;
+  const fitness = bellScore * 0.60 + noveltyScore * 0.40;
 
   return {
-    passed: isLooseEnough,
+    passed: isUniqueAndLoose,
+    passedUniqueness: passedUniquenessGate,
     fitness,
-    referenceSim: Number(anchorSim.toFixed(3)),
+    promptSim: promptSim !== null ? Number(promptSim.toFixed(3)) : null,
+    maxLineSim: Number(maxPoemSim.toFixed(3)),
   };
 };
 
-const generateCandidatePool = (poolSize = 150) => {
+const generateCandidatePool = (poolSize = 200) => {
   const pool = [];
   const seen = new Set();
   let safetyCounter = 0;
@@ -218,6 +266,7 @@ const generateCandidatePool = (poolSize = 150) => {
         minLength: 2,
         maxLength: 25,
         temperature: 1.0,
+        maxLengthMatch: 6
       });
 
       const cleanLine = cleanOutputLine(rawLine);
@@ -225,7 +274,12 @@ const generateCandidatePool = (poolSize = 150) => {
 
       if (cleanLine && wordCount >= 2 && wordCount <= 16 && !seen.has(cleanLine)) {
         seen.add(cleanLine);
-        pool.push({ text: cleanLine, wordCount, vector: null });
+        pool.push({
+          text: cleanLine,
+          wordCount,
+          features: extractLexicalFeatures(cleanLine),
+          vector: null,
+        });
       }
     } catch (_) {
       // Ignore single-attempt generation misses
@@ -237,7 +291,7 @@ const generateCandidatePool = (poolSize = 150) => {
 
 const generateText = async () => {
   const numLines = 20;
-  const candidates = generateCandidatePool(150);
+  const candidates = generateCandidatePool(200);
   const rawPrompt = promptInput.value.trim();
 
   let promptVector = null;
@@ -267,15 +321,32 @@ const generateText = async () => {
 
   const chosenLines = [];
   const chosenVectors = [];
+  const chosenFeatures = [];
   const usedTexts = new Set();
   const debugLog = [];
 
   for (let i = 0; i < numLines; i++) {
     const { minWords, maxWords } = getLineBounds(i, numLines);
+    const applyLooseness = i < LOOSENESS_LINE_LIMIT;
+    const activePromptVec = applyLooseness ? promptVector : null;
 
+    // Filter out exact duplicates AND lines with high word/phrase overlap
     let matching = candidates.filter(
-      c => !usedTexts.has(c.text) && c.wordCount >= minWords && c.wordCount <= maxWords
+      c =>
+        !usedTexts.has(c.text) &&
+        c.wordCount >= minWords &&
+        c.wordCount <= maxWords &&
+        !isLexicallyTooSimilar(c.features, chosenFeatures)
     );
+
+    // Fallback 1: Relax word-count bounds before relaxing uniqueness
+    if (matching.length === 0) {
+      matching = candidates.filter(
+        c => !usedTexts.has(c.text) && !isLexicallyTooSimilar(c.features, chosenFeatures)
+      );
+    }
+
+    // Fallback 2: Only if entire pool is exhausted
     if (matching.length === 0) {
       matching = candidates.filter(c => !usedTexts.has(c.text));
     }
@@ -284,36 +355,47 @@ const generateText = async () => {
     let selected;
 
     if (extractor && matching[0].vector) {
-      // Score every candidate with the looseness fitness function
       const evaluated = matching.map(c => ({
         candidate: c,
-        ...evaluateFitness(c.vector, promptVector, chosenVectors, LOOSENESS),
+        ...evaluateFitness(c.vector, activePromptVec, chosenVectors, LOOSENESS),
       }));
 
-      // Prefer candidates that pass the "loose enough" gate; fallback to all if pool is tight
-      const validPool = evaluated.filter(e => e.passed);
-      const activePool = validPool.length > 0 ? validPool : evaluated;
+      // Tier 1: Passes both prompt looseness (for i < 15) and strict inter-line uniqueness
+      let activePool = evaluated.filter(e => e.passed);
 
-      // Sort by highest fitness (closest to the desired looseness sweet spot)
-      activePool.sort((a, b) => b.fitness - a.fitness);
+      // Tier 2: At minimum, strictly distinct from all previous lines
+      if (activePool.length === 0) {
+        activePool = evaluated.filter(e => e.passedUniqueness);
+      }
 
-      // Sample randomly among the top 4 fittest candidates for poetic variety
-      const topK = activePool.slice(0, Math.min(4, activePool.length));
+      // Tier 3: Sort by lowest similarity to previous lines so it never picks a near-duplicate
+      if (activePool.length === 0) {
+        activePool = [...evaluated].sort((a, b) => a.maxLineSim - b.maxLineSim);
+      } else {
+        activePool.sort((a, b) => b.fitness - a.fitness);
+      }
+
+      // Use wider sampling (top 8) once looseness turns off so the closing lines stay spontaneous
+      const sampleSize = applyLooseness ? 3 : 8;
+      const topK = activePool.slice(0, Math.min(sampleSize, activePool.length));
       const pick = topK[Math.floor(Math.random() * topK.length)];
 
       selected = pick.candidate;
       chosenVectors.push(selected.vector);
       debugLog.push({
+        verse: i + 1,
         line: selected.text,
-        sim: pick.referenceSim,
+        loosenessActive: applyLooseness,
+        promptSim: pick.promptSim ?? 'n/a',
+        maxLineSim: pick.maxLineSim,
         fitness: Number(pick.fitness.toFixed(3)),
-        looseEnough: pick.passed,
       });
     } else {
       selected = matching[Math.floor(Math.random() * matching.length)];
     }
 
     usedTexts.add(selected.text);
+    chosenFeatures.push(selected.features);
     chosenLines.push(selected.text);
   }
 

@@ -161,12 +161,8 @@ const cosineSimilarity = (vecA, vecB) => {
   return dot;
 };
 
-// Common Dutch & English function words ignored when checking content-word overlap
 const STOPWORDS = new Set([
-  'de', 'het', 'een', 'en', 'van', 'ik', 'je', 'jij', 'hij', 'zij', 'ze', 'wij', 'we',
-  'in', 'op', 'te', 'dat', 'die', 'is', 'zijn', 'was', 'niet', 'maar', 'met', 'voor',
-  'aan', 'om', 'ook', 'als', 'dan', 'nog', 'wel', 'naar', 'uit', 'bij', 'tot', 'er',
-  'the', 'a', 'an', 'and', 'of', 'to', 'in', 'is', 'it', 'that', 'for', 'on', 'with',
+  'and', 'of', 'to', 'in', 'is', 'it', 'that', 'for', 'on', 'with',
   'as', 'at', 'by', 'be', 'this', 'are', 'or', 'from', 'but', 'not', 'my', 'your',
   'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'so', 'all'
 ]);
@@ -253,7 +249,7 @@ const evaluateFitness = (candidateVec, activePromptVec, chosenVecs, looseness) =
   };
 };
 
-const generateCandidatePool = (poolSize = 200) => {
+const generateCandidatePool = (poolSize = 300) => {
   const pool = [];
   const seen = new Set();
   let safetyCounter = 0;

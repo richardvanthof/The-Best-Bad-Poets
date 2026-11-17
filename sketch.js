@@ -1,4 +1,4 @@
-  const files = `
+const files = `
 Bjork - Venus as a boy.txt
 Grandaddy - Jeds other poem.txt
 John Cooper Clarke - I wanna be yours.txt
@@ -23,9 +23,10 @@ Spinvis - Smalfilm.txt
 Spinvis - Tot ziens.txt
 Spinvis - Voor ik vergeet.txt
 Spinvis - Wespen op de Appeltaart.txt
-  `.trim().split('\n').map(file => file.trim()).filter(Boolean);
+`.trim().split('\n').map(file => file.trim()).filter(Boolean);
 
-let ORDER = 2;
+let ORDER = 3;
+let corpus = '';
 
 const generateBtn = document.getElementById('generate-btn');
 const corpusTextArea = document.getElementById('corpus');
@@ -34,7 +35,15 @@ const promptInput = document.getElementById('prompt');
 const markovOrderValuePreview = document.getElementById('markov-order-value');
 const markovOrderSelector = document.getElementById('markov-order-selector');
 
-let markov = RiTa.markov();
+let markov = RiTa.markov(ORDER);
+
+const rebuildMarkov = (order) => {
+  ORDER = order;
+  markov = RiTa.markov(ORDER);
+  if (corpus) {
+    markov.addText(corpus);
+  }
+};
 
 const initialize = async () => {
   await loadTexts(files);
@@ -42,16 +51,17 @@ const initialize = async () => {
   markovOrderSelector.value = ORDER;
   markovOrderValuePreview.textContent = ORDER;
 
-  markovOrderSelector.addEventListener('change', (e) => {
-    markovOrderValuePreview.textContent = markovOrderSelector.value;
-    ORDER = parseInt(markovOrderSelector.value, 10);
-  })
+  markovOrderSelector.addEventListener('change', () => {
+    const newOrder = parseInt(markovOrderSelector.value, 10);
+    markovOrderValuePreview.textContent = newOrder;
+    rebuildMarkov(newOrder);
+  });
 
-  generateBtn.addEventListener('click', async () => {
+  generateBtn.addEventListener('click', () => {
     generateBtn.disabled = true;
     generateBtn.innerText = 'Generating...';
     try {
-      outputTextarea.value = await generateText();
+      outputTextarea.value = generateText();
     } catch (err) {
       showError(err);
     } finally {
@@ -59,15 +69,14 @@ const initialize = async () => {
       generateBtn.innerText = 'Generate';
     }
   });
-  
-}
+};
 
 const normalize = (text) => {
   return text
-    .replace(/\r\n/g, ' ')
-    .replace(/\r/g, ' ')
-    .replace(/\n+/g, ' ')
-    .toLowerCase()
+    .replace(/\r\n|\r|\n+/g, '. ')
+    .replace(/([.!?])\s*\./g, '$1')
+    .replace(/\s+/g, ' ')
+    //.toLowerCase()
     .trim();
 };
 
@@ -82,41 +91,39 @@ const loadTexts = async (fileNames) => {
     })
   );
 
-  let corpus = texts.join(' ');
-  corpus = normalize(corpus);
-
+  corpus = normalize(texts.join('\n'));
   console.log(corpus);
 
-  // load text into the model
+  // Load normalized text into the model
   corpusTextArea.value = corpus;
   markov.addText(corpus);
-}
+};
 
 const showError = (err) => {
   const message = err instanceof Error ? err.message : String(err);
   outputTextarea.value = `Error: ${message}`;
-}
+};
 
-const generateText = async () => {
+const generateText = () => {
   const options = {
-    //numSentences: 1,
-    //minLength: 5,
-   // maxLength: 10, //is total output length, so 30 can be too short for 5 sentences.
-    // An impossible combination makes RiTa keep searching for a valid result.
-    maxLength: 150
+    minLength: 15,
+    numSentences: 10,
+    //maxLength: 100,
     // temperature: 0.9,
     // maxLengthMatch: 7,
-    //maxAttempts: 100
-    // debug: false,
-    // sortByProb: true,
+    // maxAttempts: 100,
+    // allowDuplicates: false,
   };
 
-  // Get the raw input string
-  const promptText = promptInput.value.trim().split(/\s+/) || [''];
-  
-  return await markov.generate(ORDER, promptText, options);
-}
+  const rawPrompt = promptInput.value.toLowerCase().trim();
+  if (rawPrompt) {
+    options.seed = rawPrompt;
+  }
+
+  // First argument is the number of lines/sentences to generate
+  const result = markov.generate(options);
+  console.log(result);
+  return Array.isArray(result) ? result.join('\n') : result;
+};
+
 initialize();
-
-
-

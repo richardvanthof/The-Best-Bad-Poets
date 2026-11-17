@@ -4,7 +4,48 @@
     <script src="https://cdn.jsdelivr.net/npm/rita"></script>
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8">
+    <style>
+      body { 
+        box-sizing: border-box;
+        display: block;
+        padding: 1em;
+      }
+
+      .form-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      textarea {
+        width: 100%;
+      }
+    </style>
   </head>
   <body>
+    <h3> Settings</h3>
+    <div>
+      <label for="corpus">Text corpus </label>
+    </div>
+      <textarea id="corpus" rows="10" cols="50"></textarea>
+
+  <h3> Output</h3>
+  <div class="form-row">
+    <label for="markov-order">Markov Order</label>
+    <input type="range" min="1" max="7" value="3" id="markov-order-selector">
+     <span id="markov-order-value">null</span>
+    </input>
+    
+  </div>
+   <div class="form-row">
+    <label for="prompt">Prompt (optional)</label>
+    <input type="text" id="prompt" placeholder="Text prompt">
+    
+    <button id="generate-btn">Generate</button>
+   </div>
+    
+      <textarea id="output" rows="10" cols="50"></textarea>
+   
     <script src="sketch.js"></script>
 </body></html>

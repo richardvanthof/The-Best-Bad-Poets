@@ -38,7 +38,7 @@ let markov = RiTa.markov();
 
 const initialize = async () => {
   await loadTexts(files);
-  
+
   markovOrderSelector.value = ORDER;
   markovOrderValuePreview.textContent = ORDER;
 
@@ -49,12 +49,14 @@ const initialize = async () => {
 
   generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
+    generateBtn.innerText = 'Generating...';
     try {
       outputTextarea.value = await generateText();
     } catch (err) {
       showError(err);
     } finally {
       generateBtn.disabled = false;
+      generateBtn.innerText = 'Generate';
     }
   });
   
@@ -97,11 +99,14 @@ const showError = (err) => {
 
 const generateText = async () => {
   const options = {
-    numSentences: 5,
-    // minLength: 5,
-    // maxLength: 30
+    //numSentences: 1,
+    //minLength: 5,
+   // maxLength: 10, //is total output length, so 30 can be too short for 5 sentences.
+    // An impossible combination makes RiTa keep searching for a valid result.
+    // maxLength: 150
     // temperature: 0.9,
     // maxLengthMatch: 7,
+    //maxAttempts: 100
     // debug: false,
     // sortByProb: true,
   };

@@ -5,24 +5,35 @@
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8">
     <style>
-      * {
+      body { 
         box-sizing: border-box;
         display: block;
+        padding: 1em;
+      }
+
+      .form-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        margin-bottom: 10px;
       }
     </style>
   </head>
   <body>
-    
+    <h3> Settings</h3>
     <div>
       <label for="corpus">Text corpus </label>
     </div>
       <textarea id="corpus" rows="10" cols="50"></textarea>
-   <div>
-    <label for="output">Output text</label>
-    <button id="generate-btn">Generate text</button>
+
+  <h3> Output</h3>
+   <div class="form-row">
+    <label for="prompt">Prompt (optional)</label>
+    <input type="text" id="prompt" placeholder="Text prompt">
+    <button id="generate-btn">Generate</button>
    </div>
     
       <textarea id="output" rows="10" cols="50"></textarea>
-    
+   
     <script src="sketch.js"></script>
 </body></html>

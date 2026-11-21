@@ -37,7 +37,9 @@ const MIN_INTRA_SIM = 0.02;       // Floor: blocks total non-sequitur gibberish
 const MAX_INTRA_SIM = 0.58;       // Ceiling: blocks tautologies and internal refrains
 
 // Visualization pacing (ms per verse; set lower for faster generation, higher to inspect each step)
-const STEP_DELAY_MS = 180;
+const STEP_DELAY_MS = 250;
+
+const STARTER_PROMPT = 'You'; 
 
 let corpus = '';
 let extractor = null;
@@ -53,9 +55,7 @@ let markov = RiTa.markov(ORDER);
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ============================================================================
-// LIVE GENERATION VISUALIZER (Light-Mode Studio Canvas)
-// ============================================================================
+
 const createVisualizer = () => {
   let canvas = document.getElementById('generation-viz');
   if (!canvas) {
@@ -277,7 +277,7 @@ const createVisualizer = () => {
         const isLatest = idx === chosen.length - 1;
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, isLatest ? 6 : 4, 0, Math.PI * 2);
-        ctx.fillStyle = isLatest ? '#1e40af' : '#3b82f6';
+        ctx.fillStyle = c.startsWithPrompt ? '#059669' : isLatest ? '#1e40af' : '#3b82f6';
         ctx.fill();
 
         ctx.fillStyle = '#111827';
@@ -403,6 +403,7 @@ const loadSemanticModel = async () => {
 };
 
 const initialize = async () => {
+  if (promptInput) promptInput.value = STARTER_PROMPT;
   generateBtn.disabled = true;
   generateBtn.innerText = 'Loading Corpus...';
   visualizer.render({ phase: 'Initializing', detail: 'Loading lyric corpus...' });
@@ -529,14 +530,14 @@ const CLAUSE_HINGES = new Set([
   'en', 'maar', 'of', 'terwijl', 'als', 'waar', 'dat', 'want', 'omdat', 'met', 'zonder'
 ]);
 
-const extractLexicalFeatures = (text) => {
+const extractLexicalFeatures = (text, ignoreWord = '') => {
   const allWords = text
     .toLowerCase()
     .replace(/[^a-zà-ÿ0-9\s'-]/g, '')
     .split(/\s+/)
     .filter(Boolean);
 
-  const filtered = allWords.filter(w => !STOPWORDS.has(w) && w.length > 2);
+  const filtered = allWords.filter(w => !STOPWORDS.has(w) && w !== ignoreWord && w.length > 2);
   const contentWords = new Set(filtered.length > 0 ? filtered : allWords);
 
   const trigrams = new Set();
@@ -668,10 +669,16 @@ const evaluateFitness = (candidate, activePromptVec, chosenVecs, looseness) => {
   };
 };
 
-const generateCandidatePool = async (poolSize = 300) => {
+const generateCandidatePool = async (poolSize = 300, starter = '') => {
   const pool = [];
   const seen = new Set();
   let safetyCounter = 0;
+
+  const starterClean = starter.trim();
+  const starterLower = starterClean.toLowerCase();
+  const starterCap = starterClean ? starterClean[0].toUpperCase() + starterClean.slice(1) : '';
+  const escapedStarter = starterLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const startsRegex = starterLower ? new RegExp(`^${escapedStarter}\\b`, 'i') : null;
 
   while (pool.length < poolSize && safetyCounter < poolSize * 15) {
     safetyCounter++;
@@ -695,11 +702,13 @@ const generateCandidatePool = async (poolSize = 300) => {
         !seen.has(cleanLine) &&
         !hasInternalStutter(cleanLine)
       ) {
+        const startsWithPrompt = startsRegex ? startsRegex.test(cleanLine) : false;
         seen.add(cleanLine);
         pool.push({
           text: cleanLine,
           wordCount,
-          features: extractLexicalFeatures(cleanLine),
+          startsWithPrompt,
+          features: extractLexicalFeatures(cleanLine, startsWithPrompt ? starterLower : ''),
           halves: splitLineIntoHalves(cleanLine),
           vector: null,
           leftVec: null,
@@ -708,7 +717,6 @@ const generateCandidatePool = async (poolSize = 300) => {
           vizY: Math.random(),
         });
 
-        // Repaint every 60 candidates so you see the pool populate live
         if (pool.length % 60 === 0) {
           visualizer.render({
             phase: 'Stage 1 / 3 — Markov Sampling',
@@ -718,8 +726,58 @@ const generateCandidatePool = async (poolSize = 300) => {
           await sleep(15);
         }
       }
-    } catch (_) {
-      // Ignore single-attempt generation misses
+    } catch (_) {}
+  }
+
+  // Generate 25 candidates starting with that prompt
+  if (starterCap) {
+    const seedRegex = new RegExp(`\\b(${escapedStarter}\\s+[a-zà-ÿ0-9'-]+)`, 'gi');
+    const corpusSeeds = [...new Set([...corpus.matchAll(seedRegex)].map(m => m[1]))];
+    let added = 0;
+    let tries = 0;
+
+    while (added < 25 && tries < 250) {
+      tries++;
+      try {
+        const rawSeed = corpusSeeds.length > 0
+          ? corpusSeeds[Math.floor(Math.random() * corpusSeeds.length)]
+          : undefined;
+        const seed = rawSeed
+          ? rawSeed.split(/\s+/).slice(0, Math.max(1, ORDER - 1)).join(' ')
+          : undefined;
+
+        const rawLine = markov.generate({
+          numSentences: 1,
+          minLength: 2,
+          maxLength: 22,
+          temperature: 1.0,
+          seed,
+        });
+
+        let cleanLine = cleanOutputLine(rawLine);
+        if (cleanLine && !startsRegex.test(cleanLine)) {
+          const tail = cleanLine.startsWith('I ') ? cleanLine : cleanLine[0].toLowerCase() + cleanLine.slice(1);
+          cleanLine = `${starterCap} ${tail}`;
+        }
+
+        const wordCount = cleanLine ? cleanLine.split(/\s+/).length : 0;
+        if (cleanLine && wordCount >= 2 && wordCount <= 16 && !seen.has(cleanLine) && !hasInternalStutter(cleanLine)) {
+          seen.add(cleanLine);
+          added++;
+          pool.push({
+            text: cleanLine,
+            wordCount,
+            startsWithPrompt: true,
+            features: extractLexicalFeatures(cleanLine, starterLower),
+            halves: splitLineIntoHalves(cleanLine),
+            vector: null,
+            leftVec: null,
+            rightVec: null,
+            vizX: Math.random(),
+            vizY: Math.random(),
+          });
+        }
+      } catch (_) {}
     }
   }
 
@@ -730,8 +788,17 @@ const generateText = async () => {
   const numLines = 20;
   renderOutput('');
 
-  const candidates = await generateCandidatePool(300);
-  const rawPrompt = promptInput.value.trim();
+  const rawPrompt = STARTER_PROMPT.trim();
+  const candidates = await generateCandidatePool(300, rawPrompt);
+
+  // Draw 30% of verses (6 out of 20) that must start with STARTER_PROMPT
+  const repeatIndices = new Set();
+  if (rawPrompt) {
+    const targetCount = Math.round(numLines * 0.30);
+    while (repeatIndices.size < targetCount) {
+      repeatIndices.add(Math.floor(Math.random() * numLines));
+    }
+  }
 
   let promptVector = null;
   let promptPt = null;
@@ -747,7 +814,6 @@ const generateText = async () => {
     await sleep(20);
 
     const textsToEncode = [
-      ...(rawPrompt ? [rawPrompt] : []),
       ...candidates.map(c => c.text),
       ...splittable.map(c => c.halves.left),
       ...splittable.map(c => c.halves.right),
@@ -760,9 +826,6 @@ const generateText = async () => {
     const embeddings = output.tolist();
 
     let offset = 0;
-    if (rawPrompt) {
-      promptVector = embeddings[offset++];
-    }
     candidates.forEach(c => {
       c.vector = embeddings[offset++];
     });
@@ -773,8 +836,7 @@ const generateText = async () => {
       c.rightVec = embeddings[offset++];
     });
 
-    // Project 384D embeddings into 2D semantic space
-    promptPt = visualizer.projectVectors(candidates, promptVector);
+    promptPt = visualizer.projectVectors(candidates, null);
   }
 
   const chosenCandidates = [];
@@ -788,10 +850,12 @@ const generateText = async () => {
     const { minWords, maxWords } = getLineBounds(i, numLines);
     const applyLooseness = i < LOOSENESS_LINE_LIMIT;
     const activePromptVec = applyLooseness ? promptVector : null;
+    const wantRepeat = repeatIndices.has(i);
 
     let matching = candidates.filter(
       c =>
         !usedTexts.has(c.text) &&
+        (!rawPrompt || c.startsWithPrompt === wantRepeat) &&
         c.wordCount >= minWords &&
         c.wordCount <= maxWords &&
         !isLexicallyTooSimilar(c.features, chosenFeatures)
@@ -801,6 +865,7 @@ const generateText = async () => {
       matching = candidates.filter(
         c =>
           !usedTexts.has(c.text) &&
+          (!rawPrompt || c.startsWithPrompt === wantRepeat) &&
           c.wordCount >= Math.max(2, minWords - 3) &&
           c.wordCount <= maxWords + 3 &&
           !isLexicallyTooSimilar(c.features, chosenFeatures)
@@ -809,7 +874,16 @@ const generateText = async () => {
 
     if (matching.length === 0) {
       matching = candidates.filter(
-        c => !usedTexts.has(c.text) && !isLexicallyTooSimilar(c.features, chosenFeatures)
+        c =>
+          !usedTexts.has(c.text) &&
+          (!rawPrompt || c.startsWithPrompt === wantRepeat) &&
+          !isLexicallyTooSimilar(c.features, chosenFeatures)
+      );
+    }
+
+    if (matching.length === 0) {
+      matching = candidates.filter(
+        c => !usedTexts.has(c.text) && (!rawPrompt || c.startsWithPrompt === wantRepeat)
       );
     }
 
@@ -855,10 +929,9 @@ const generateText = async () => {
       chosenVectors.push(selected.vector);
       debugLog.push({
         verse: i + 1,
+        repeated: selected.startsWithPrompt,
         line: selected.text,
-        loosenessActive: applyLooseness,
         intraSim: pick.intraSim ?? 'short',
-        promptSim: pick.promptSim ?? 'n/a',
         maxLineSim: pick.maxLineSim,
         fitness: Number(pick.fitness.toFixed(3)),
       });
@@ -872,11 +945,10 @@ const generateText = async () => {
     chosenCandidates.push(selected);
     chosenLines.push(selected.text);
 
-    // Stream verse into #output and update the live canvas
     renderOutput(chosenLines.join('\n'));
     visualizer.render({
       phase: `Stage 3 / 3 — Composing Verse ${i + 1} / ${numLines}`,
-      detail: `Target length: ${minWords}–${maxWords} words | Prompt steering: ${applyLooseness ? 'ON' : 'OFF'} | Valid pool: ${validIds.size}`,
+      detail: `Target length: ${minWords}–${maxWords} words | Starter ("${rawPrompt || 'none'}"): ${wantRepeat ? 'ON' : 'OFF'} | Valid pool: ${validIds.size}`,
       candidates,
       promptPt,
       chosen: chosenCandidates,
@@ -890,7 +962,7 @@ const generateText = async () => {
 
   visualizer.render({
     phase: `Complete — ${chosenLines.length} Verses Generated`,
-    detail: 'Hover or click Generate again to trace a new semantic path.',
+    detail: 'Click Generate again to trace a new semantic path.',
     candidates,
     promptPt,
     chosen: chosenCandidates,

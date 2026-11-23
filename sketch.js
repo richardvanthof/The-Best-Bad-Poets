@@ -98,7 +98,7 @@ const initialize = async () => {
         corpus,
         order: ORDER,
         looseness: LOOSENESS,
-        starterPrompt: STARTER_PROMPT,
+        starterPrompt: promptInput.value,
         renderOutput,
       });
       renderOutput(text);

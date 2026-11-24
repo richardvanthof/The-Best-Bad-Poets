@@ -12,9 +12,9 @@ const CLAUSE_HINGES = new Set([
 
 export const getLineBounds = (lineIndex, totalLines) => {
   const progress = lineIndex / Math.max(1, totalLines - 1);
-  if (progress < 0.25) return { minWords: 8, maxWords: 12 };
+  if (progress < 0.25) return { minWords: 9, maxWords: 13 };
   if (progress < 0.75) return { minWords: 10, maxWords: 15 };
-  return { minWords: 2, maxWords: 6};
+  return { minWords: 3, maxWords: 7};
 };
 
 export const cosineSimilarity = (vecA, vecB) => {

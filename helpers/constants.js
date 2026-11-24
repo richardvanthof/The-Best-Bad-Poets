@@ -5,3 +5,4 @@ export const INTRA_TARGET_SIM = 0.28;
 export const MIN_INTRA_SIM = 0.02;
 export const MAX_INTRA_SIM = 0.58;
 export const STEP_DELAY_MS = 250;
+export const PERCENT_REP = 0.35;

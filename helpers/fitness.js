@@ -26,6 +26,7 @@ const evaluateFitness = (candidate, activePromptVec, chosenVecs, looseness) => {
   const passedUniquenessGate = maxPoemSim <= MAX_LINE_SIMILARITY;
   const passedIntraGate =
     intraSim === null || (intraSim >= MIN_INTRA_SIM && intraSim <= MAX_INTRA_SIM);
+
   const noveltyScore = 1 - Math.max(0, maxPoemSim);
   const promptBellScore = activePromptVec
     ? Math.exp(-Math.pow(promptSim - targetSim, 2) / (2 * promptTolerance * promptTolerance))
@@ -33,9 +34,20 @@ const evaluateFitness = (candidate, activePromptVec, chosenVecs, looseness) => {
   const intraBellScore = intraSim !== null
     ? Math.exp(-Math.pow(intraSim - INTRA_TARGET_SIM, 2) / (2 * intraTolerance * intraTolerance))
     : noveltyScore;
-  const fitness = activePromptVec
+
+  const baseFitness = activePromptVec
     ? intraBellScore * 0.45 + promptBellScore * 0.35 + noveltyScore * 0.20
     : intraBellScore * 0.60 + noveltyScore * 0.40;
+
+  const LIST_WORDS = new Set(['and', 'or', 'not', 'no', 'more']); // add 'en' if Spinvis files are in Dutch
+
+  const commaCount = (candidate.text.slice(0, -1).match(/,/g) || []).length;
+  const words = candidate.text.toLowerCase().replace(/[^a-zà-ÿ\s]/g, '').split(/\s+/).filter(Boolean);
+  const conjCount = words.slice(1, -1).filter(w => LIST_WORDS.has(w)).length;
+
+  const listSignals = commaCount + conjCount;
+  const rhythmBonus = listSignals >= 2 ? 0.32 : listSignals === 1 ? 0.12 : 0;
+  const fitness = baseFitness + rhythmBonus;
 
   return {
     passed: passedPromptGate && passedUniquenessGate && passedIntraGate,

@@ -2,6 +2,8 @@ import { cleanOutputLine } from './normalize.js';
 import evaluateFitness from './fitness.js';
 import { getLineBounds, extractLexicalFeatures, hasInternalStutter, splitLineIntoHalves, isLexicallyTooSimilar } from './textGenerationHelpers.js';
 import { LOOSENESS_LINE_LIMIT } from './constants.js';
+import { PERCENT_REP } from './constants.js';
+
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -130,7 +132,7 @@ export const generateText = async ({ markov, visualizer, extractor, corpus, orde
   // Draw 30% of verses that must start with the configured starter prompt
   const repeatIndices = new Set();
   if (rawPrompt) {
-    const targetCount = Math.round(numLines * 0.30);
+    const targetCount = Math.round(numLines * PERCENT_REP);
     while (repeatIndices.size < targetCount) {
       repeatIndices.add(Math.floor(Math.random() * numLines));
     }
@@ -150,6 +152,7 @@ export const generateText = async ({ markov, visualizer, extractor, corpus, orde
     await sleep(20);
 
     const textsToEncode = [
+      ...(rawPrompt ? [rawPrompt] : []),
       ...candidates.map(c => c.text),
       ...splittable.map(c => c.halves.left),
       ...splittable.map(c => c.halves.right),
@@ -162,6 +165,9 @@ export const generateText = async ({ markov, visualizer, extractor, corpus, orde
     const embeddings = output.tolist();
 
     let offset = 0;
+    if (rawPrompt) {
+      promptVector = embeddings[offset++];
+    }
     candidates.forEach(c => {
       c.vector = embeddings[offset++];
     });
@@ -172,7 +178,7 @@ export const generateText = async ({ markov, visualizer, extractor, corpus, orde
       c.rightVec = embeddings[offset++];
     });
 
-    promptPt = visualizer.projectVectors(candidates, null);
+    promptPt = visualizer.projectVectors(candidates, promptVector);
   }
 
   const chosenCandidates = [];
